@@ -1,0 +1,11 @@
+{
+  "tests": [
+    {
+      "name": "Get complaints list",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "bodyMatcher": "none"
+    }
+  ]
+}

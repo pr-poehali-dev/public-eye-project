@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Get statistics",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"total": 0, "resolved": 0},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

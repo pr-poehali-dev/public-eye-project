@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Upload without image fails",
+      "method": "POST",
+      "path": "/",
+      "body": {},
+      "expectedStatus": 400,
+      "bodyMatcher": "none"
+    }
+  ]
+}
