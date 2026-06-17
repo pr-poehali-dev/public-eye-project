@@ -16,6 +16,10 @@ interface CityMapProps {
   height?: string;
 }
 
+// Глобальный реестр коллбэков — HtmlMarker использует inline onclick
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const markerCallbacks: Record<string, () => void> = (window as any).__mapMarkerCbs ??= {};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sdkPromise: Promise<any> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,6 +41,8 @@ function loadSdk(): Promise<any> {
   return sdkPromise;
 }
 
+let cbCounter = 0;
+
 export default function CityMap({
   complaints = [],
   onMarkerClick,
@@ -55,8 +61,11 @@ export default function CityMap({
   const mapglRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersRef = useRef<any[]>([]);
+  const markerCbKeysRef = useRef<string[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const selectedMarkerRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const popupRef = useRef<any>(null);
 
   const dgisCenter: [number, number] = center ? [center[1], center[0]] : DEFAULT_CENTER;
 
@@ -78,9 +87,9 @@ export default function CityMap({
       if (clickable && onMapClick) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         map.on('click', (e: any) => {
-          const c = e.lngLat;
-          if (Array.isArray(c)) onMapClick(c[1], c[0]);
-          else onMapClick(c.lat ?? c[1], c.lng ?? c[0]);
+          const coords = e.lngLat;
+          if (Array.isArray(coords)) onMapClick(coords[1], coords[0]);
+          else onMapClick(coords.lat ?? coords[1], coords.lng ?? coords[0]);
         });
       }
     });
@@ -89,6 +98,9 @@ export default function CityMap({
       destroyed = true;
       markersRef.current.forEach(m => { try { m.destroy(); } catch { /**/ } });
       markersRef.current = [];
+      markerCbKeysRef.current.forEach(k => delete markerCallbacks[k]);
+      markerCbKeysRef.current = [];
+      if (popupRef.current) { try { popupRef.current.destroy(); } catch { /**/ } popupRef.current = null; }
       if (selectedMarkerRef.current) { try { selectedMarkerRef.current.destroy(); } catch { /**/ } selectedMarkerRef.current = null; }
       if (mapRef.current) { try { mapRef.current.destroy(); } catch { /**/ } mapRef.current = null; }
     };
@@ -99,8 +111,13 @@ export default function CityMap({
   useEffect(() => {
     if (!mapRef.current || !mapglRef.current) return;
     const mapgl = mapglRef.current;
+
+    // Чистим старые
     markersRef.current.forEach(m => { try { m.destroy(); } catch { /**/ } });
     markersRef.current = [];
+    markerCbKeysRef.current.forEach(k => delete markerCallbacks[k]);
+    markerCbKeysRef.current = [];
+    if (popupRef.current) { try { popupRef.current.destroy(); } catch { /**/ } popupRef.current = null; }
 
     complaints.forEach(c => {
       if (!c.lat || !c.lng) return;
@@ -108,21 +125,15 @@ export default function CityMap({
       const status = STATUS_CONFIG[c.status];
       const color = status?.color || '#94A3B8';
 
-      const marker = new mapgl.HtmlMarker(mapRef.current, {
-        coordinates: [c.lng, c.lat],
-        html: `<div style="cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3));transition:transform .15s"
-            onmouseenter="this.style.transform='scale(1.2)'" onmouseleave="this.style.transform='scale(1)'">
-          <svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">
-            <path d="M19 0C8.51 0 0 8.51 0 19c0 14.25 19 29 19 29S38 33.25 38 19C38 8.51 29.49 0 19 0z" fill="${color}"/>
-            <circle cx="19" cy="19" r="12" fill="white" opacity="0.95"/>
-            <text x="19" y="24" text-anchor="middle" font-size="14">${cat.icon}</text>
-          </svg></div>`,
-        anchor: [0.5, 1],
-      });
+      // Уникальный ключ для коллбэка
+      const cbKey = `mc_${++cbCounter}`;
+      markerCbKeysRef.current.push(cbKey);
 
-      marker.on('click', () => {
+      // Регистрируем коллбэк глобально
+      markerCallbacks[cbKey] = () => {
         if (onMarkerClick) onMarkerClick(c);
-        const popup = new mapgl.HtmlMarker(mapRef.current, {
+        if (popupRef.current) { try { popupRef.current.destroy(); } catch { /**/ } popupRef.current = null; }
+        popupRef.current = new mapgl.HtmlMarker(mapRef.current, {
           coordinates: [c.lng!, c.lat!],
           html: `<div style="background:white;border-radius:14px;padding:12px 14px;
               box-shadow:0 8px 24px rgba(0,0,0,0.15);min-width:210px;
@@ -140,7 +151,25 @@ export default function CityMap({
             </div></div>`,
           anchor: [0.5, 1.4],
         });
-        setTimeout(() => { try { popup.destroy(); } catch { /**/ } }, 5000);
+        setTimeout(() => {
+          if (popupRef.current) { try { popupRef.current.destroy(); } catch { /**/ } popupRef.current = null; }
+        }, 6000);
+      };
+
+      const marker = new mapgl.HtmlMarker(mapRef.current, {
+        coordinates: [c.lng, c.lat],
+        html: `<div
+            onclick="window.__mapMarkerCbs['${cbKey}']()"
+            style="cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3));transition:transform .15s"
+            onmouseenter="this.style.transform='scale(1.2)'"
+            onmouseleave="this.style.transform='scale(1)'">
+          <svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">
+            <path d="M19 0C8.51 0 0 8.51 0 19c0 14.25 19 29 19 29S38 33.25 38 19C38 8.51 29.49 0 19 0z" fill="${color}"/>
+            <circle cx="19" cy="19" r="12" fill="white" opacity="0.95"/>
+            <text x="19" y="24" text-anchor="middle" font-size="14">${cat.icon}</text>
+          </svg>
+        </div>`,
+        anchor: [0.5, 1],
       });
 
       markersRef.current.push(marker);
