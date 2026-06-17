@@ -239,11 +239,18 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {'statusCode': 201, 'headers': CORS_HEADERS, 'body': json.dumps({'id': row[0], 'created_at': str(row[1])})}
 
-    # DELETE ?id=X — удаление жалобы (только модератор/админ)
+    # DELETE ?id=X — удаление жалобы (модератор/админ — любую; обычный пользователь — только свою)
     if method == 'DELETE' and complaint_id:
-        if not user or user.get('role') not in ('moderator', 'admin'):
+        if not user:
             conn.close()
-            return {'statusCode': 403, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Нет прав'})}
+            return {'statusCode': 401, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Необходима авторизация'})}
+        is_admin = user.get('role') in ('moderator', 'admin')
+        if not is_admin:
+            cur.execute("SELECT user_id FROM complaints WHERE id = %s", (complaint_id,))
+            row = cur.fetchone()
+            if not row or row[0] != user.get('user_id'):
+                conn.close()
+                return {'statusCode': 403, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Нет прав на удаление этой жалобы'})}
         cur.execute("DELETE FROM complaint_photos WHERE complaint_id = %s", (complaint_id,))
         cur.execute("DELETE FROM complaint_supports WHERE complaint_id = %s", (complaint_id,))
         cur.execute("DELETE FROM comments WHERE complaint_id = %s", (complaint_id,))

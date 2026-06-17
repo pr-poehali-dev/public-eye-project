@@ -92,9 +92,12 @@ def handler(event: dict, context) -> dict:
             return {'statusCode': 409, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Email уже зарегистрирован'})}
 
         ph = hash_password(password)
+        cur.execute("SELECT COUNT(*) FROM users")
+        is_first = cur.fetchone()[0] == 0
+        role_to_assign = 'admin' if is_first else 'user'
         cur.execute(
-            "INSERT INTO users (email, phone, name, password_hash) VALUES (%s, %s, %s, %s) RETURNING id, role",
-            (email, phone or None, name, ph)
+            "INSERT INTO users (email, phone, name, password_hash, role) VALUES (%s, %s, %s, %s, %s) RETURNING id, role",
+            (email, phone or None, name, ph, role_to_assign)
         )
         row = cur.fetchone()
         conn.commit()
