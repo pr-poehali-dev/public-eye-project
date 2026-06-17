@@ -83,15 +83,6 @@ export default function CityMap({
         key: DGIS_KEY,
       });
       mapRef.current = map;
-
-      if (clickable && onMapClick) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        map.on('click', (e: any) => {
-          const coords = e.lngLat;
-          if (Array.isArray(coords)) onMapClick(coords[1], coords[0]);
-          else onMapClick(coords.lat ?? coords[1], coords.lng ?? coords[0]);
-        });
-      }
     });
 
     return () => {
@@ -106,6 +97,28 @@ export default function CityMap({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Обработчик клика по карте — пересоздаём при смене clickable
+  const onMapClickRef = useRef(onMapClick);
+  onMapClickRef.current = onMapClick;
+
+  useEffect(() => {
+    const tryAttach = () => {
+      if (!mapRef.current) { setTimeout(tryAttach, 200); return; }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handler = (e: any) => {
+        if (!onMapClickRef.current) return;
+        const coords = e.lngLat;
+        if (Array.isArray(coords)) onMapClickRef.current(coords[1], coords[0]);
+        else onMapClickRef.current(coords.lat ?? coords[1], coords.lng ?? coords[0]);
+      };
+      if (clickable) {
+        mapRef.current.on('click', handler);
+        return () => { try { mapRef.current?.off('click', handler); } catch { /**/ } };
+      }
+    };
+    return tryAttach() ?? undefined;
+  }, [clickable]);
 
   // Маркеры жалоб
   useEffect(() => {
