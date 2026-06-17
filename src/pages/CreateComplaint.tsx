@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { complaintsApi, uploadApi, CATEGORIES, CreateComplaintData } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -18,6 +18,25 @@ export default function CreateComplaint() {
     title: '', description: '', category: '', address: '', lat: undefined, lng: undefined, contact_info: '', photos: [],
   });
   const [photos, setPhotos] = useState<string[]>([]);
+  const [geocoding, setGeocoding] = useState(false);
+
+  const reverseGeocode = useCallback(async (lat: number, lng: number) => {
+    setGeocoding(true);
+    try {
+      const url = `https://catalog.api.2gis.com/3.0/items/geocode?lat=${lat}&lng=${lng}&fields=items.point,items.full_name,items.address_name&key=e2881020-31cf-45d1-85dc-6e2524f9006f`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const item = data?.result?.items?.[0];
+      if (item) {
+        const address = item.address_name || item.full_name || '';
+        if (address) set('address', address);
+      }
+    } catch {
+      // Тихо игнорируем — адрес можно ввести вручную
+    } finally {
+      setGeocoding(false);
+    }
+  }, []);
   const [previews, setPreviews] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -195,15 +214,25 @@ export default function CreateComplaint() {
             {step === 2 && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Адрес (текстом)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Адрес</label>
                   <div className="relative">
                     <Icon name="MapPin" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <Input
                       value={form.address}
                       onChange={e => set('address', e.target.value)}
-                      placeholder="ул. Ленина, д. 15"
-                      className="pl-9 h-11 rounded-xl border-gray-200"
+                      placeholder="Нажмите на карту — адрес появится автоматически"
+                      className="pl-9 pr-9 h-11 rounded-xl border-gray-200"
                     />
+                    {geocoding && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                    {!geocoding && form.address && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <Icon name="CheckCircle" size={16} className="text-green-500" />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -231,6 +260,7 @@ export default function CreateComplaint() {
                       onMapClick={(lat, lng) => {
                         set('lat', lat);
                         set('lng', lng);
+                        reverseGeocode(lat, lng);
                       }}
                       selectedLat={form.lat}
                       selectedLng={form.lng}
