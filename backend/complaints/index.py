@@ -155,7 +155,7 @@ def handler(event: dict, context) -> dict:
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': json.dumps({'complaints': complaints, 'total': total})}
 
     # POST /complaints — создание жалобы (DEMO: авторизация не требуется)
-    if method == 'POST' and path.endswith('/complaints'):
+    if method == 'POST' and (path.endswith('/complaints') or path in ('/', '')):
         title = body.get('title', '').strip()
         description = body.get('description', '').strip()
         category = body.get('category', '')
