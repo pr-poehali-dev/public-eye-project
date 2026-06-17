@@ -50,7 +50,7 @@ export default function CityMap({
   selectedLat,
   selectedLng,
   clickable = false,
-  center = [55.7558, 37.6173],
+  center = [53.1959, 50.1457],
   zoom = 11,
   height = '100%',
 }: CityMapProps) {
