@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Complaint, STATUS_CONFIG, getCategoryByValue } from '@/lib/api';
 
 const DGIS_KEY = 'e2881020-31cf-45d1-85dc-6e2524f9006f';
@@ -66,6 +66,7 @@ export default function CityMap({
   const selectedMarkerRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const popupRef = useRef<any>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   const dgisCenter: [number, number] = center ? [center[1], center[0]] : DEFAULT_CENTER;
 
@@ -83,6 +84,10 @@ export default function CityMap({
         key: DGIS_KEY,
       });
       mapRef.current = map;
+      // Ждём полной инициализации карты
+      map.once('ready', () => { if (!destroyed) setMapReady(true); });
+      // Fallback если событие не стрельнёт
+      setTimeout(() => { if (!destroyed && mapRef.current) setMapReady(true); }, 1500);
     });
 
     return () => {
@@ -120,9 +125,9 @@ export default function CityMap({
     return tryAttach() ?? undefined;
   }, [clickable]);
 
-  // Маркеры жалоб
+  // Маркеры жалоб — ждём готовности карты
   useEffect(() => {
-    if (!mapRef.current || !mapglRef.current) return;
+    if (!mapReady || !mapRef.current || !mapglRef.current) return;
     const mapgl = mapglRef.current;
 
     // Чистим старые
@@ -187,11 +192,11 @@ export default function CityMap({
 
       markersRef.current.push(marker);
     });
-  }, [complaints, onMarkerClick]);
+  }, [mapReady, complaints, onMarkerClick]);
 
   // Выбранная точка
   useEffect(() => {
-    if (!mapRef.current || !mapglRef.current) return;
+    if (!mapReady || !mapRef.current || !mapglRef.current) return;
     const mapgl = mapglRef.current;
     if (selectedMarkerRef.current) { try { selectedMarkerRef.current.destroy(); } catch { /**/ } selectedMarkerRef.current = null; }
     if (selectedLat && selectedLng) {
@@ -205,7 +210,7 @@ export default function CityMap({
       mapRef.current.setCenter([selectedLng, selectedLat]);
       mapRef.current.setZoom(Math.max(mapRef.current.getZoom(), 15));
     }
-  }, [selectedLat, selectedLng]);
+  }, [mapReady, selectedLat, selectedLng]);
 
   return (
     <div
