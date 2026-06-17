@@ -11,10 +11,11 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const navLinks = [
-    { to: '/', label: 'Карта', icon: 'Map' },
+    { to: '/', label: 'Жалобы', icon: 'AlertTriangle' },
+    { to: '/shelters', label: 'Убежища', icon: 'Shield' },
     { to: '/stats', label: 'Статистика', icon: 'BarChart3' },
     { to: '/rating', label: 'Рейтинг', icon: 'Trophy' },
-    ...(isModerator ? [{ to: '/admin', label: 'Админ', icon: 'Shield' }] : []),
+    ...(isModerator ? [{ to: '/admin', label: 'Админ', icon: 'Settings' }] : []),
   ];
 
   const handleLogout = () => {

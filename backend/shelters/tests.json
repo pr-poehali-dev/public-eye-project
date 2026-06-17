@@ -1,7 +1,7 @@
 {
   "tests": [
     {
-      "name": "Get statistics",
+      "name": "Get shelters list",
       "method": "GET",
       "path": "/",
       "expectedStatus": 200,

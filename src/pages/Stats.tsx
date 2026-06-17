@@ -153,7 +153,7 @@ export default function Stats() {
 
         {/* Top complaints */}
         {data.top_complaints.length > 0 && (
-          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm mb-4">
             <h3 className="font-semibold text-gray-900 mb-4">🔥 Самые популярные жалобы</h3>
             <div className="space-y-3">
               {data.top_complaints.slice(0, 5).map((c, i) => (
@@ -167,13 +167,60 @@ export default function Stats() {
                     <p className="font-medium text-gray-900 truncate">{c.title}</p>
                     <p className="text-xs text-gray-400">{c.address || 'Адрес не указан'}</p>
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold text-red-500 text-sm flex items-center gap-1">
-                      <Icon name="Heart" size={12} className="fill-red-400" /> {c.supports_count}
-                    </div>
+                  <div className="font-bold text-red-500 text-sm flex items-center gap-1">
+                    <Icon name="Heart" size={12} className="fill-red-400" /> {c.supports_count}
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Районы Самары */}
+        {data.districts && data.districts.length > 0 && (
+          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="w-8 h-8 gradient-primary rounded-xl flex items-center justify-center">
+                <Icon name="MapPin" size={16} className="text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Жалобы по районам Самары</h3>
+                <p className="text-xs text-gray-400">Определяется автоматически по координатам</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {data.districts.filter(d => d.total > 0).map(d => {
+                const maxTotal = Math.max(...data.districts.map(x => x.total), 1);
+                const resolveRate = d.total > 0 ? Math.round((d.resolved / d.total) * 100) : 0;
+                return (
+                  <div key={d.name}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+                        <span className="text-sm font-medium text-gray-800">{d.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span className="text-amber-600">🆕 {d.new}</span>
+                        <span className="text-blue-600">🔄 {d.in_progress}</span>
+                        <span className="text-green-600">✅ {d.resolved}</span>
+                        <span className="font-semibold text-gray-700 w-6 text-right">{d.total}</span>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${(d.total / maxTotal) * 100}%`, backgroundColor: d.color }} />
+                    </div>
+                    {resolveRate > 0 && (
+                      <p className="text-xs text-gray-400 mt-0.5">Решено {resolveRate}%</p>
+                    )}
+                  </div>
+                );
+              })}
+              {data.districts.every(d => d.total === 0) && (
+                <p className="text-sm text-gray-400 text-center py-4">
+                  Жалоб с координатами пока нет — добавляйте метки на карте
+                </p>
+              )}
             </div>
           </div>
         )}

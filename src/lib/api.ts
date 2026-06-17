@@ -4,6 +4,7 @@ export const API = {
   stats: 'https://functions.poehali.dev/004f5796-0c79-4f8f-a906-e967f14288d9',
   upload: 'https://functions.poehali.dev/8c16937e-f013-427d-972b-f67730009c3f',
   aiAppeal: 'https://functions.poehali.dev/1be75732-bd70-4ad9-bbc0-cba584fcb955',
+  shelters: 'https://functions.poehali.dev/55bee9d6-64f9-443c-b15c-0e1960b165d0',
 };
 
 function getToken(): string | null {
@@ -169,6 +170,7 @@ export interface StatsData {
   top_complaints: Complaint[];
   monthly: { month: string; count: number }[];
   status_data: { status: string; label: string; count: number; color: string }[];
+  districts: { name: string; color: string; total: number; resolved: number; new: number; in_progress: number }[];
 }
 
 export const CATEGORIES = [
@@ -192,6 +194,51 @@ export const STATUS_CONFIG = {
 export function getCategoryByValue(value: string) {
   return CATEGORIES.find(c => c.value === value) || CATEGORIES[CATEGORIES.length - 1];
 }
+
+// Shelters
+export interface Shelter {
+  id: number;
+  user_id?: number;
+  title: string;
+  type: string;
+  type_label: string;
+  type_icon: string;
+  type_color: string;
+  description?: string;
+  address?: string;
+  lat: number;
+  lng: number;
+  capacity?: number;
+  status: string;
+  verified: boolean;
+  created_at: string;
+  author_name?: string;
+}
+
+export const SHELTER_TYPES = [
+  { value: 'metro',    label: 'Метро',     icon: '🚇', color: '#3B82F6' },
+  { value: 'basement', label: 'Подвал',    icon: '🏚️', color: '#6B7280' },
+  { value: 'bunker',   label: 'Бункер',    icon: '🛡️', color: '#1D4ED8' },
+  { value: 'shelter',  label: 'Укрытие',   icon: '⛺', color: '#10B981' },
+  { value: 'parking',  label: 'Паркинг',   icon: '🅿️', color: '#F59E0B' },
+  { value: 'hospital', label: 'Больница',  icon: '🏥', color: '#EF4444' },
+  { value: 'school',   label: 'Школа/ДК',  icon: '🏫', color: '#8B5CF6' },
+  { value: 'other',    label: 'Другое',    icon: '📍', color: '#94A3B8' },
+];
+
+export const sheltersApi = {
+  list: () => req<{ shelters: Shelter[]; total: number }>(`${API.shelters}`, {
+    method: 'GET', headers: getHeaders(),
+  }),
+  create: (data: { title: string; type: string; description?: string; address?: string; lat: number; lng: number; capacity?: number }) =>
+    req<{ id: number; message: string }>(`${API.shelters}`, {
+      method: 'POST', headers: getHeaders(true), body: JSON.stringify(data),
+    }),
+  remove: (id: number) =>
+    req<{ message: string }>(`${API.shelters}?id=${id}`, {
+      method: 'DELETE', headers: getHeaders(true),
+    }),
+};
 
 export function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
