@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { complaintsApi, aiApi, Complaint, STATUS_CONFIG, getCategoryByValue, formatDate, timeAgo } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import CityMap from '@/components/CityMap';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import Icon from '@/components/ui/icon';
@@ -153,7 +154,7 @@ export default function ComplaintDetail() {
             {complaint.lat && complaint.lng && (
               <div className="flex items-center gap-2">
                 <Icon name="Navigation" size={15} className="text-blue-400" />
-                <span>{complaint.lat.toFixed(4)}, {complaint.lng.toFixed(4)}</span>
+                <span>{complaint.lat.toFixed(5)}, {complaint.lng.toFixed(5)}</span>
               </div>
             )}
             <div className="flex items-center gap-2">
@@ -167,6 +168,20 @@ export default function ComplaintDetail() {
               </div>
             )}
           </div>
+
+          {/* Map */}
+          {complaint.lat && complaint.lng && (
+            <div className="mt-4 rounded-2xl overflow-hidden border border-gray-100" style={{ height: 220 }}>
+              <CityMap
+                complaints={[complaint]}
+                selectedLat={complaint.lat}
+                selectedLng={complaint.lng}
+                center={[complaint.lat, complaint.lng]}
+                zoom={15}
+                height="100%"
+              />
+            </div>
+          )}
 
           {complaint.official_comment && (
             <div className="mt-4 p-4 bg-blue-50 rounded-2xl border border-blue-100">

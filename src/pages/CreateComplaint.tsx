@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { complaintsApi, uploadApi, CATEGORIES, CreateComplaintData } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import CityMap from '@/components/CityMap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -197,7 +198,7 @@ export default function CreateComplaint() {
             {step === 2 && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Адрес</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Адрес (текстом)</label>
                   <div className="relative">
                     <Icon name="MapPin" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <Input
@@ -209,40 +210,61 @@ export default function CreateComplaint() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Широта</label>
-                    <Input
-                      type="number"
-                      step="0.000001"
-                      value={form.lat || ''}
-                      onChange={e => set('lat', e.target.value ? parseFloat(e.target.value) : undefined)}
-                      placeholder="55.753215"
-                      className="h-11 rounded-xl border-gray-200"
+                {/* Interactive map */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Укажите место на карте
+                    </label>
+                    <Button
+                      type="button"
+                      onClick={handleGeolocate}
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50 text-xs h-8"
+                    >
+                      <Icon name="Navigation" size={13} className="mr-1" />
+                      Моё место
+                    </Button>
+                  </div>
+
+                  <div className="rounded-2xl overflow-hidden border-2 border-dashed border-blue-200 h-64 relative">
+                    <CityMap
+                      clickable
+                      onMapClick={(lat, lng) => {
+                        set('lat', lat);
+                        set('lng', lng);
+                      }}
+                      selectedLat={form.lat}
+                      selectedLng={form.lng}
+                      height="100%"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Долгота</label>
-                    <Input
-                      type="number"
-                      step="0.000001"
-                      value={form.lng || ''}
-                      onChange={e => set('lng', e.target.value ? parseFloat(e.target.value) : undefined)}
-                      placeholder="37.622504"
-                      className="h-11 rounded-xl border-gray-200"
-                    />
-                  </div>
+
+                  <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+                    <Icon name="MousePointer" size={11} />
+                    Нажмите на карту, чтобы поставить метку
+                  </p>
                 </div>
 
-                <Button type="button" onClick={handleGeolocate} variant="outline" className="w-full h-11 rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50">
-                  <Icon name="Navigation" size={16} className="mr-2" />
-                  Определить моё местоположение
-                </Button>
-
-                {form.lat && form.lng && (
+                {form.lat && form.lng ? (
                   <div className="flex items-center gap-2 p-3 bg-green-50 rounded-xl border border-green-200">
                     <Icon name="CheckCircle" size={16} className="text-green-500" />
-                    <span className="text-sm text-green-700">Координаты: {form.lat?.toFixed(4)}, {form.lng?.toFixed(4)}</span>
+                    <span className="text-sm text-green-700">
+                      Метка установлена: {(form.lat as number).toFixed(5)}, {(form.lng as number).toFixed(5)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { set('lat', undefined); set('lng', undefined); }}
+                      className="ml-auto text-gray-400 hover:text-red-400"
+                    >
+                      <Icon name="X" size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl border border-amber-200">
+                    <Icon name="AlertCircle" size={16} className="text-amber-500" />
+                    <span className="text-sm text-amber-700">Место не выбрано — жалоба не появится на карте</span>
                   </div>
                 )}
 
