@@ -63,7 +63,7 @@ export const complaintsApi = {
     });
   },
   get: (id: number) =>
-    req<Complaint>(`${API.complaints}/${id}`, {
+    req<Complaint>(`${API.complaints}?id=${id}`, {
       method: 'GET', headers: getHeaders(true),
     }),
   create: (data: CreateComplaintData) =>
@@ -71,15 +71,15 @@ export const complaintsApi = {
       method: 'POST', headers: getHeaders(true), body: JSON.stringify(data),
     }),
   updateStatus: (id: number, data: { status?: string; official_comment?: string; is_spam?: boolean }) =>
-    req<{ message: string }>(`${API.complaints}/${id}/status`, {
+    req<{ message: string }>(`${API.complaints}?id=${id}&action=status`, {
       method: 'PATCH', headers: getHeaders(true), body: JSON.stringify(data),
     }),
   support: (id: number) =>
-    req<{ supported: boolean; supports_count: number }>(`${API.complaints}/${id}/support`, {
+    req<{ supported: boolean; supports_count: number }>(`${API.complaints}?id=${id}&action=support`, {
       method: 'POST', headers: getHeaders(true), body: '{}',
     }),
   addComment: (id: number, text: string, is_official = false) =>
-    req<{ id: number; created_at: string }>(`${API.complaints}/${id}/comments`, {
+    req<{ id: number; created_at: string }>(`${API.complaints}?id=${id}&action=comments`, {
       method: 'POST', headers: getHeaders(true), body: JSON.stringify({ text, is_official }),
     }),
 };

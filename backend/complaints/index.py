@@ -55,12 +55,15 @@ def row_to_complaint(row):
     }
 
 def handler(event: dict, context) -> dict:
-    """CRUD для жалоб: создание, просмотр, поддержка, комментарии, смена статуса"""
+    """CRUD для жалоб через query-параметры: id, action"""
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': ''}
 
-    path = event.get('path', '/')
     method = event.get('httpMethod', 'GET')
+    params = event.get('queryStringParameters') or {}
+    complaint_id = int(params['id']) if params.get('id', '').isdigit() else None
+    action = params.get('action', '')
+
     body = {}
     if event.get('body'):
         try:
@@ -72,46 +75,42 @@ def handler(event: dict, context) -> dict:
     conn = get_db()
     cur = conn.cursor()
 
-    # GET /complaints — список жалоб с фильтрами
-    if method == 'GET' and not any(x in path for x in ['/support', '/comments']):
-        parts = path.rstrip('/').split('/')
-        if parts[-1].isdigit():
-            complaint_id = int(parts[-1])
-            cur.execute("""
-                SELECT c.id, c.user_id, c.title, c.description, c.category, c.status,
-                       c.address, c.lat, c.lng, c.contact_info, c.official_comment,
-                       c.supports_count, c.is_spam, c.created_at, c.updated_at,
-                       u.name as author_name
-                FROM complaints c LEFT JOIN users u ON c.user_id = u.id
-                WHERE c.id = %s AND c.is_spam = FALSE
-            """, (complaint_id,))
-            row = cur.fetchone()
-            if not row:
-                conn.close()
-                return {'statusCode': 404, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Жалоба не найдена'})}
-            complaint = row_to_complaint(row)
-            cur.execute("SELECT photo_url FROM complaint_photos WHERE complaint_id = %s", (complaint_id,))
-            complaint['photos'] = [r[0] for r in cur.fetchall()]
-            cur.execute("""
-                SELECT cm.id, cm.text, cm.is_official, cm.created_at, u.name
-                FROM comments cm LEFT JOIN users u ON cm.user_id = u.id
-                WHERE cm.complaint_id = %s ORDER BY cm.created_at ASC
-            """, (complaint_id,))
-            complaint['comments'] = [
-                {'id': r[0], 'text': r[1], 'is_official': r[2], 'created_at': str(r[3]), 'author_name': r[4]}
-                for r in cur.fetchall()
-            ]
-            # Проверяем поддержал ли текущий пользователь
-            if user:
-                cur.execute("SELECT id FROM complaint_supports WHERE complaint_id = %s AND user_id = %s", (complaint_id, user['user_id']))
-                complaint['user_supported'] = cur.fetchone() is not None
-            else:
-                complaint['user_supported'] = False
+    # GET ?id=X — получить одну жалобу
+    if method == 'GET' and complaint_id:
+        cur.execute("""
+            SELECT c.id, c.user_id, c.title, c.description, c.category, c.status,
+                   c.address, c.lat, c.lng, c.contact_info, c.official_comment,
+                   c.supports_count, c.is_spam, c.created_at, c.updated_at,
+                   u.name as author_name
+            FROM complaints c LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.id = %s AND c.is_spam = FALSE
+        """, (complaint_id,))
+        row = cur.fetchone()
+        if not row:
             conn.close()
-            return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': json.dumps(complaint)}
+            return {'statusCode': 404, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Жалоба не найдена'})}
+        complaint = row_to_complaint(row)
+        cur.execute("SELECT photo_url FROM complaint_photos WHERE complaint_id = %s", (complaint_id,))
+        complaint['photos'] = [r[0] for r in cur.fetchall()]
+        cur.execute("""
+            SELECT cm.id, cm.text, cm.is_official, cm.created_at, u.name
+            FROM comments cm LEFT JOIN users u ON cm.user_id = u.id
+            WHERE cm.complaint_id = %s ORDER BY cm.created_at ASC
+        """, (complaint_id,))
+        complaint['comments'] = [
+            {'id': r[0], 'text': r[1], 'is_official': r[2], 'created_at': str(r[3]), 'author_name': r[4]}
+            for r in cur.fetchall()
+        ]
+        if user:
+            cur.execute("SELECT id FROM complaint_supports WHERE complaint_id = %s AND user_id = %s", (complaint_id, user['user_id']))
+            complaint['user_supported'] = cur.fetchone() is not None
+        else:
+            complaint['user_supported'] = False
+        conn.close()
+        return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': json.dumps(complaint)}
 
-        # Список жалоб
-        params = event.get('queryStringParameters') or {}
+    # GET — список жалоб
+    if method == 'GET':
         category = params.get('category')
         status = params.get('status')
         limit = min(int(params.get('limit', 50)), 100)
@@ -148,14 +147,13 @@ def handler(event: dict, context) -> dict:
             ph = cur.fetchone()
             c['photos'] = [ph[0]] if ph else []
             complaints.append(c)
-
         cur.execute(f"SELECT COUNT(*) FROM complaints c WHERE {where}", args)
         total = cur.fetchone()[0]
         conn.close()
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': json.dumps({'complaints': complaints, 'total': total})}
 
-    # POST /complaints — создание жалобы (DEMO: авторизация не требуется)
-    if method == 'POST' and (path.endswith('/complaints') or path in ('/', '')):
+    # POST без action — создание жалобы
+    if method == 'POST' and not action:
         title = body.get('title', '').strip()
         description = body.get('description', '').strip()
         category = body.get('category', '')
@@ -172,62 +170,41 @@ def handler(event: dict, context) -> dict:
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
         """, (author_id, title, description, category, address or None, lat, lng, contact_info or None))
         complaint_id = cur.fetchone()[0]
-        # Сохраняем фото (URL из S3)
-        photos = body.get('photos', [])
-        for photo_url in photos[:5]:
+        for photo_url in body.get('photos', [])[:5]:
             cur.execute("INSERT INTO complaint_photos (complaint_id, photo_url) VALUES (%s, %s)", (complaint_id, photo_url))
         conn.commit()
         conn.close()
         return {'statusCode': 201, 'headers': CORS_HEADERS, 'body': json.dumps({'id': complaint_id, 'message': 'Жалоба создана'})}
 
-    # PATCH /complaints/:id/status — смена статуса (модератор/админ)
-    if method == 'PATCH' and '/status' in path:
+    # PATCH ?id=X&action=status
+    if method == 'PATCH' and action == 'status' and complaint_id:
         if not user or user.get('role') not in ('moderator', 'admin'):
             conn.close()
             return {'statusCode': 403, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Нет прав'})}
-        parts = path.rstrip('/').split('/')
-        idx = parts.index('complaints') + 1 if 'complaints' in parts else -1
-        complaint_id = int(parts[idx]) if idx > 0 and parts[idx].isdigit() else None
-        if not complaint_id:
-            conn.close()
-            return {'statusCode': 400, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Не указан ID жалобы'})}
         new_status = body.get('status')
         official_comment = body.get('official_comment')
         is_spam = body.get('is_spam')
-        if new_status and new_status not in VALID_STATUSES:
-            conn.close()
-            return {'statusCode': 400, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Неверный статус'})}
         updates = ["updated_at = NOW()"]
         args = []
-        if new_status:
-            updates.append("status = %s")
-            args.append(new_status)
+        if new_status and new_status in VALID_STATUSES:
+            updates.append("status = %s"); args.append(new_status)
         if official_comment is not None:
-            updates.append("official_comment = %s")
-            args.append(official_comment)
+            updates.append("official_comment = %s"); args.append(official_comment)
         if is_spam is not None:
-            updates.append("is_spam = %s")
-            args.append(bool(is_spam))
+            updates.append("is_spam = %s"); args.append(bool(is_spam))
         args.append(complaint_id)
         cur.execute(f"UPDATE complaints SET {', '.join(updates)} WHERE id = %s", args)
         conn.commit()
         conn.close()
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': json.dumps({'message': 'Обновлено'})}
 
-    # POST /complaints/:id/support
-    if method == 'POST' and '/support' in path:
+    # POST ?id=X&action=support
+    if method == 'POST' and action == 'support' and complaint_id:
         if not user:
             conn.close()
             return {'statusCode': 401, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Необходима авторизация'})}
-        parts = path.rstrip('/').split('/')
-        idx = parts.index('complaints') + 1 if 'complaints' in parts else -1
-        complaint_id = int(parts[idx]) if idx > 0 and parts[idx].isdigit() else None
-        if not complaint_id:
-            conn.close()
-            return {'statusCode': 400, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Не указан ID жалобы'})}
         cur.execute("SELECT id FROM complaint_supports WHERE complaint_id = %s AND user_id = %s", (complaint_id, user['user_id']))
-        existing = cur.fetchone()
-        if existing:
+        if cur.fetchone():
             cur.execute("DELETE FROM complaint_supports WHERE complaint_id = %s AND user_id = %s", (complaint_id, user['user_id']))
             cur.execute("UPDATE complaints SET supports_count = GREATEST(0, supports_count - 1) WHERE id = %s", (complaint_id,))
             conn.commit()
@@ -243,18 +220,15 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': json.dumps({'supported': True, 'supports_count': count})}
 
-    # POST /complaints/:id/comments
-    if method == 'POST' and '/comments' in path:
+    # POST ?id=X&action=comments
+    if method == 'POST' and action == 'comments' and complaint_id:
         if not user:
             conn.close()
             return {'statusCode': 401, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Необходима авторизация'})}
-        parts = path.rstrip('/').split('/')
-        idx = parts.index('complaints') + 1 if 'complaints' in parts else -1
-        complaint_id = int(parts[idx]) if idx > 0 and parts[idx].isdigit() else None
         text = body.get('text', '').strip()
-        if not complaint_id or not text:
+        if not text:
             conn.close()
-            return {'statusCode': 400, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Не указан текст комментария'})}
+            return {'statusCode': 400, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Не указан текст'})}
         is_official = user.get('role') in ('moderator', 'admin') and body.get('is_official', False)
         cur.execute("""
             INSERT INTO comments (complaint_id, user_id, text, is_official) VALUES (%s, %s, %s, %s)
