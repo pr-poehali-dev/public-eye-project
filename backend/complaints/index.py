@@ -154,17 +154,15 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': json.dumps({'complaints': complaints, 'total': total})}
 
-    # POST /complaints — создание жалобы
+    # POST /complaints — создание жалобы (DEMO: авторизация не требуется)
     if method == 'POST' and path.endswith('/complaints'):
-        if not user:
-            conn.close()
-            return {'statusCode': 401, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Необходима авторизация'})}
         title = body.get('title', '').strip()
         description = body.get('description', '').strip()
         category = body.get('category', '')
         if not title or not description or category not in VALID_CATEGORIES:
             conn.close()
             return {'statusCode': 400, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Заполните обязательные поля'})}
+        author_id = user['user_id'] if user else None
         lat = body.get('lat')
         lng = body.get('lng')
         address = body.get('address', '').strip()
@@ -172,7 +170,7 @@ def handler(event: dict, context) -> dict:
         cur.execute("""
             INSERT INTO complaints (user_id, title, description, category, address, lat, lng, contact_info)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
-        """, (user['user_id'], title, description, category, address or None, lat, lng, contact_info or None))
+        """, (author_id, title, description, category, address or None, lat, lng, contact_info or None))
         complaint_id = cur.fetchone()[0]
         # Сохраняем фото (URL из S3)
         photos = body.get('photos', [])

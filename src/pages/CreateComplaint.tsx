@@ -23,10 +23,7 @@ export default function CreateComplaint() {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
 
-  if (!user) {
-    navigate('/login');
-    return null;
-  }
+
 
   const set = (field: string, val: string | number | undefined) =>
     setForm(prev => ({ ...prev, [field]: val }));

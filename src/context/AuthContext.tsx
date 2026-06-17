@@ -19,16 +19,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('gn_token');
-    if (savedToken) {
-      setToken(savedToken);
-      authApi.me()
-        .then(({ user }) => setUser(user))
-        .catch(() => { localStorage.removeItem('gn_token'); setToken(null); })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+    // DEMO MODE: автологин тестового пользователя
+    const demoUser: User = { id: 1, email: 'demo@glaznaroda.ru', name: 'Тестовый пользователь', role: 'admin' };
+    setUser(demoUser);
+    setToken('demo-token');
+    setLoading(false);
   }, []);
 
   const login = (newToken: string, newUser: User) => {
