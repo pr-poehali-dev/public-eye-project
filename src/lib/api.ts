@@ -83,6 +83,10 @@ export const complaintsApi = {
     req<{ id: number; created_at: string }>(`${API.complaints}?id=${id}&action=comments`, {
       method: 'POST', headers: getHeaders(true), body: JSON.stringify({ text, is_official }),
     }),
+  delete: (id: number) =>
+    req<{ message: string }>(`${API.complaints}?id=${id}`, {
+      method: 'DELETE', headers: getHeaders(true),
+    }),
 };
 
 // Stats

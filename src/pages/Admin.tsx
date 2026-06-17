@@ -77,6 +77,16 @@ export default function Admin() {
     } catch { toast.error('Ошибка'); }
   };
 
+  const handleDelete = async (c: Complaint) => {
+    if (!confirm(`Удалить жалобу #${c.id} «${c.title}»?\n\nЭто действие нельзя отменить.`)) return;
+    try {
+      await complaintsApi.delete(c.id);
+      toast.success('Жалоба удалена');
+      if (selected?.id === c.id) setSelected(null);
+      load();
+    } catch { toast.error('Ошибка удаления'); }
+  };
+
   if (!user || !isModerator) return null;
 
   return (
@@ -183,12 +193,20 @@ export default function Admin() {
                                 {formatDate(c.created_at)}
                               </td>
                               <td className="py-3 px-4">
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleMarkSpam(c); }}
-                                  className="text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1"
-                                >
-                                  <Icon name="Trash2" size={12} /> Спам
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={e => { e.stopPropagation(); handleMarkSpam(c); }}
+                                    className="text-xs text-orange-400 hover:text-orange-600 transition-colors flex items-center gap-1"
+                                  >
+                                    <Icon name="AlertTriangle" size={12} /> Спам
+                                  </button>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); handleDelete(c); }}
+                                    className="text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1"
+                                  >
+                                    <Icon name="Trash2" size={12} /> Удалить
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -253,7 +271,7 @@ export default function Admin() {
                   />
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-2">
                   <Button onClick={() => navigate(`/complaint/${selected.id}`)} variant="outline" size="sm" className="flex-1 rounded-xl text-xs">
                     Открыть
                   </Button>
@@ -261,6 +279,14 @@ export default function Admin() {
                     {updating ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Сохранить'}
                   </Button>
                 </div>
+                <Button
+                  onClick={() => handleDelete(selected)}
+                  variant="outline"
+                  size="sm"
+                  className="w-full rounded-xl text-xs text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
+                >
+                  <Icon name="Trash2" size={13} className="mr-1" /> Удалить жалобу навсегда
+                </Button>
               </div>
             </div>
           )}

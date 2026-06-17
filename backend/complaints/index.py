@@ -239,5 +239,18 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return {'statusCode': 201, 'headers': CORS_HEADERS, 'body': json.dumps({'id': row[0], 'created_at': str(row[1])})}
 
+    # DELETE ?id=X — удаление жалобы (только модератор/админ)
+    if method == 'DELETE' and complaint_id:
+        if not user or user.get('role') not in ('moderator', 'admin'):
+            conn.close()
+            return {'statusCode': 403, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Нет прав'})}
+        cur.execute("DELETE FROM complaint_photos WHERE complaint_id = %s", (complaint_id,))
+        cur.execute("DELETE FROM complaint_supports WHERE complaint_id = %s", (complaint_id,))
+        cur.execute("DELETE FROM comments WHERE complaint_id = %s", (complaint_id,))
+        cur.execute("DELETE FROM complaints WHERE id = %s", (complaint_id,))
+        conn.commit()
+        conn.close()
+        return {'statusCode': 200, 'headers': CORS_HEADERS, 'body': json.dumps({'message': 'Жалоба удалена'})}
+
     conn.close()
     return {'statusCode': 404, 'headers': CORS_HEADERS, 'body': json.dumps({'error': 'Not found'})}
