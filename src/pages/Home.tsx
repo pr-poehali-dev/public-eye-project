@@ -26,13 +26,29 @@ function QuickComplaintModal({
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [saving, setSaving] = useState(false);
+  const [address, setAddress] = useState('');
+  const [geocoding, setGeocoding] = useState(true);
+
+  useEffect(() => {
+    const fetchAddress = async () => {
+      try {
+        const url = `https://catalog.api.2gis.com/3.0/items/geocode?lat=${lat}&lng=${lng}&fields=items.address_name,items.full_name&key=e2881020-31cf-45d1-85dc-6e2524f9006f`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const item = data?.result?.items?.[0];
+        if (item) setAddress(item.address_name || item.full_name || '');
+      } catch { /* адрес введут вручную */ }
+      finally { setGeocoding(false); }
+    };
+    fetchAddress();
+  }, [lat, lng]);
 
   const handleSave = async () => {
     if (!title.trim()) { toast.error('Опишите проблему'); return; }
     if (!category) { toast.error('Выберите категорию'); return; }
     setSaving(true);
     try {
-      const res = await complaintsApi.create({ title: title.trim(), description: title.trim(), category, lat, lng });
+      const res = await complaintsApi.create({ title: title.trim(), description: title.trim(), category, lat, lng, address: address || undefined });
       const created = await complaintsApi.get(res.id);
       toast.success('Жалоба отправлена!');
       onSaved(created);
@@ -56,7 +72,9 @@ function QuickComplaintModal({
             </div>
             <div>
               <p className="font-bold text-gray-900 text-sm">Новая жалоба</p>
-              <p className="text-xs text-gray-400">{lat.toFixed(4)}, {lng.toFixed(4)}</p>
+              {geocoding
+                ? <p className="text-xs text-gray-400 flex items-center gap-1"><div className="w-2.5 h-2.5 border border-gray-400 border-t-transparent rounded-full animate-spin" /> Определяем адрес...</p>
+                : <p className="text-xs text-gray-500 truncate max-w-[200px]">{address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}</p>}
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
