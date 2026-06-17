@@ -1,35 +1,10 @@
 import { useEffect, useRef } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import { Complaint, STATUS_CONFIG, getCategoryByValue } from '@/lib/api';
 
-// Fix Leaflet default icon paths
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+const DGIS_KEY = 'e2881020-31cf-45d1-85dc-6e2524f9006f';
 
-function makeIcon(color: string, emoji: string) {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="46" viewBox="0 0 36 46">
-      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.3"/>
-      </filter>
-      <path d="M18 0C8.06 0 0 8.06 0 18c0 13.5 18 28 18 28S36 31.5 36 18C36 8.06 27.94 0 18 0z"
-        fill="${color}" filter="url(#shadow)"/>
-      <circle cx="18" cy="18" r="11" fill="white" opacity="0.95"/>
-      <text x="18" y="22" text-anchor="middle" font-size="13">${emoji}</text>
-    </svg>`;
-  return L.divIcon({
-    html: svg,
-    className: '',
-    iconSize: [36, 46],
-    iconAnchor: [18, 46],
-    popupAnchor: [0, -46],
-  });
-}
+// Самара
+const DEFAULT_CENTER: [number, number] = [50.1457, 53.1959]; // [lng, lat] — 2ГИС использует [lng, lat]
 
 interface CityMapProps {
   complaints?: Complaint[];
@@ -38,7 +13,7 @@ interface CityMapProps {
   selectedLat?: number;
   selectedLng?: number;
   clickable?: boolean;
-  center?: [number, number];
+  center?: [number, number]; // [lat, lng] снаружи
   zoom?: number;
   height?: string;
 }
@@ -50,109 +25,162 @@ export default function CityMap({
   selectedLat,
   selectedLng,
   clickable = false,
-  center = [53.1959, 50.1457],
-  zoom = 11,
+  center,
+  zoom = 12,
   height = '100%',
 }: CityMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<L.LayerGroup | null>(null);
-  const selectedMarkerRef = useRef<L.Marker | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markersRef = useRef<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const selectedMarkerRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapglRef = useRef<any>(null);
 
+  // Центр: снаружи передаётся [lat, lng], 2ГИС принимает [lng, lat]
+  const dgisCenter = center
+    ? [center[1], center[0]]
+    : DEFAULT_CENTER;
+
+  // Загружаем 2ГИС SDK и инициализируем карту
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const map = L.map(containerRef.current, {
-      center,
-      zoom,
-      zoomControl: true,
-    });
+    let destroyed = false;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map);
+    async function init() {
+       
+      await loadMapgl();
+      if (destroyed) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mapgl = (window as any).mapgl;
+      mapglRef.current = mapgl;
 
-    markersRef.current = L.layerGroup().addTo(map);
-    mapRef.current = map;
-
-    if (clickable && onMapClick) {
-      map.on('click', (e: L.LeafletMouseEvent) => {
-        onMapClick(e.latlng.lat, e.latlng.lng);
+      const map = new mapgl.Map(containerRef.current, {
+        center: dgisCenter,
+        zoom,
+        key: DGIS_KEY,
       });
+
+      mapRef.current = map;
+
+      if (clickable && onMapClick) {
+        map.on('click', (e: { lngLat: { lat: number; lng: number } }) => {
+          onMapClick(e.lngLat.lat, e.lngLat.lng);
+        });
+      }
     }
 
+    init();
+
     return () => {
-      map.remove();
-      mapRef.current = null;
+      destroyed = true;
+      if (mapRef.current) {
+        mapRef.current.destroy();
+        mapRef.current = null;
+      }
     };
   }, []);
 
-  // Update complaint markers
+  // Обновляем маркеры жалоб
   useEffect(() => {
-    if (!markersRef.current || !mapRef.current) return;
-    markersRef.current.clearLayers();
+    if (!mapRef.current || !mapglRef.current) return;
+    const mapgl = mapglRef.current;
+
+    markersRef.current.forEach(m => m.destroy());
+    markersRef.current = [];
 
     complaints.forEach(c => {
       if (!c.lat || !c.lng) return;
       const cat = getCategoryByValue(c.category);
       const status = STATUS_CONFIG[c.status];
-      const icon = makeIcon(status?.color || '#94A3B8', cat.icon);
-      const marker = L.marker([c.lat, c.lng], { icon });
+      const color = status?.color || '#94A3B8';
 
-      marker.bindPopup(`
-        <div style="min-width:200px;font-family:Inter,sans-serif">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-            <span style="background:${status?.color}20;color:${status?.color};border:1px solid ${status?.color}40;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">
-              ${status?.label}
-            </span>
-            <span style="font-size:12px;color:#6b7280">${cat.icon} ${cat.label}</span>
-          </div>
-          <p style="font-weight:600;font-size:14px;color:#111827;margin:0 0 4px">${c.title}</p>
-          ${c.address ? `<p style="font-size:12px;color:#9ca3af;margin:0 0 8px">📍 ${c.address}</p>` : ''}
-          <div style="display:flex;align-items:center;justify-content:space-between">
-            <span style="font-size:12px;color:#ef4444">❤️ ${c.supports_count}</span>
-            <a href="/complaint/${c.id}" style="font-size:12px;color:#2563eb;font-weight:500">Подробнее →</a>
-          </div>
-        </div>
-      `, { maxWidth: 260 });
+      const el = document.createElement('div');
+      el.innerHTML = `
+        <div style="
+          width:38px;height:48px;cursor:pointer;
+          filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+          transition:transform 0.15s;
+        " onmouseenter="this.style.transform='scale(1.2)'" onmouseleave="this.style.transform='scale(1)'">
+          <svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">
+            <path d="M19 0C8.51 0 0 8.51 0 19c0 14.25 19 29 19 29S38 33.25 38 19C38 8.51 29.49 0 19 0z" fill="${color}"/>
+            <circle cx="19" cy="19" r="12" fill="white" opacity="0.95"/>
+            <text x="19" y="24" text-anchor="middle" font-size="14">${cat.icon}</text>
+          </svg>
+        </div>`;
 
-      if (onMarkerClick) {
-        marker.on('click', () => onMarkerClick(c));
-      }
+      const marker = new mapgl.Marker(mapRef.current, {
+        coordinates: [c.lng, c.lat],
+        html: el.innerHTML,
+        anchor: [0.5, 1],
+      });
 
-      markersRef.current?.addLayer(marker);
+      marker.on('click', () => {
+        if (onMarkerClick) onMarkerClick(c);
+
+        // Показываем popup
+        const popup = new mapgl.HtmlMarker(mapRef.current, {
+          coordinates: [c.lng!, c.lat!],
+          html: `
+            <div style="
+              background:white;border-radius:14px;padding:12px 14px;
+              box-shadow:0 8px 24px rgba(0,0,0,0.15);
+              min-width:210px;font-family:Inter,sans-serif;
+              border:1px solid #f0f0f0;position:relative;
+            ">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                <span style="background:${color}20;color:${color};border:1px solid ${color}40;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">
+                  ${status?.label}
+                </span>
+                <span style="font-size:12px;color:#6b7280">${cat.icon} ${cat.label}</span>
+              </div>
+              <p style="font-weight:600;font-size:13px;color:#111827;margin:0 0 4px;line-height:1.3">${c.title}</p>
+              ${c.address ? `<p style="font-size:11px;color:#9ca3af;margin:0 0 8px">📍 ${c.address}</p>` : ''}
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+                <span style="font-size:12px;color:#ef4444">❤️ ${c.supports_count}</span>
+                <a href="/complaint/${c.id}" style="font-size:12px;color:#2563eb;font-weight:500;text-decoration:none">
+                  Подробнее →
+                </a>
+              </div>
+            </div>`,
+          anchor: [0.5, 1.3],
+        });
+
+        setTimeout(() => popup.destroy(), 5000);
+      });
+
+      markersRef.current.push(marker);
     });
   }, [complaints, onMarkerClick]);
 
-  // Update selected point marker
+  // Маркер выбранной точки
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapRef.current || !mapglRef.current) return;
+    const mapgl = mapglRef.current;
 
     if (selectedMarkerRef.current) {
-      mapRef.current.removeLayer(selectedMarkerRef.current);
+      selectedMarkerRef.current.destroy();
       selectedMarkerRef.current = null;
     }
 
     if (selectedLat && selectedLng) {
-      const pinIcon = L.divIcon({
+      selectedMarkerRef.current = new mapgl.Marker(mapRef.current, {
+        coordinates: [selectedLng, selectedLat],
         html: `<div style="
           width:28px;height:28px;
           background:linear-gradient(135deg,#1D4ED8,#3B82F6);
           border:3px solid white;border-radius:50% 50% 50% 0;
           transform:rotate(-45deg);
-          box-shadow:0 4px 12px rgba(37,99,235,0.5)
+          box-shadow:0 4px 12px rgba(37,99,235,0.5);
         "></div>`,
-        className: '',
-        iconSize: [28, 28],
-        iconAnchor: [14, 28],
+        anchor: [0.5, 1],
       });
-      const m = L.marker([selectedLat, selectedLng], { icon: pinIcon })
-        .addTo(mapRef.current)
-        .bindPopup('📍 Выбранная точка')
-        .openPopup();
-      selectedMarkerRef.current = m;
-      mapRef.current.setView([selectedLat, selectedLng], Math.max(mapRef.current.getZoom(), 15));
+
+      mapRef.current.setCenter([selectedLng, selectedLat]);
+      mapRef.current.setZoom(Math.max(mapRef.current.getZoom(), 15));
     }
   }, [selectedLat, selectedLng]);
 
@@ -163,4 +191,20 @@ export default function CityMap({
       className={clickable ? 'cursor-crosshair' : ''}
     />
   );
+}
+
+// Загружаем 2ГИС MapGL SDK один раз
+function loadMapgl() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const w = window as any;
+  if (w.__mapglPromise) return w.__mapglPromise;
+
+  w.__mapglPromise = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = 'https://mapgl.2gis.com/api/js/v1';
+    script.onload = () => resolve(w.mapgl);
+    document.head.appendChild(script);
+  });
+
+  return w.__mapglPromise;
 }
